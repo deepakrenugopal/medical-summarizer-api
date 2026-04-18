@@ -6,7 +6,7 @@ import os
 app = Flask(__name__)
 
 # Load model once when app starts
-model_path = "t5-small"
+model_path = "Deepakrenugopal/medical_summarizer"
 
 tokenizer = AutoTokenizer.from_pretrained(model_path)
 model = AutoModelForSeq2SeqLM.from_pretrained(model_path)
