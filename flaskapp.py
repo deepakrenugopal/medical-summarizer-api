@@ -43,7 +43,9 @@ def summarize():
         if not data or "text" not in data:
             return jsonify({"error": "Missing 'text' field"}), 400
 
-        text = data["text"]
+        text = data.get("findings")
+        if not text:
+        return jsonify({"error": "Missing 'findings' field"}), 400
 
         inputs = tokenizer(text, return_tensors="pt", truncation=True)
 
@@ -60,7 +62,7 @@ def summarize():
 
         summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
-        return jsonify({"summary": summary})
+        return jsonify({"impression": summary})
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
