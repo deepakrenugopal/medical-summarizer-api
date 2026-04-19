@@ -28,6 +28,11 @@ def load_model():
 def home():
     return "Medical Summarization API is running!"
 
+@app.route("/load")
+def load():
+    load_model()
+    return "Model loaded successfully!"
+
 @app.route("/summarize", methods=["POST"])
 def summarize():
     try:
