@@ -40,28 +40,35 @@ def summarize():
 
         data = request.get_json()
 
-        if not data or "text" not in data:
-            return jsonify({"error": "Missing 'text' field"}), 400
+        if not data:
+            return jsonify({"error": "Missing request body"}), 400
 
-        text = data.get("findings")
+       
+        text = data.get("findings") or data.get("text")
+
         if not text:
-        return jsonify({"error": "Missing 'findings' field"}), 400
+            return jsonify({"error": "Missing 'findings' field"}), 400
 
-        inputs = tokenizer(text, return_tensors="pt", truncation=True)
+        inputs = tokenizer(
+            text,
+            return_tensors="pt",
+            truncation=True,
+            max_length=512
+        )
 
         summary_ids = model.generate(
             **inputs,
-            max_length=60, 
-            min_length=20,        
-            num_beams=4,          
-            length_penalty=2.0,   
+            max_length=60,
+            min_length=20,
+            num_beams=4,
+            length_penalty=2.0,
             early_stopping=True,
             no_repeat_ngram_size=3
-            
         )
 
         summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
 
+        
         return jsonify({"impression": summary})
 
     except Exception as e:
