@@ -49,9 +49,13 @@ def summarize():
 
         summary_ids = model.generate(
             **inputs,
-            max_length=32,        # reduced for performance
-            num_beams=2,
-            early_stopping=True
+            max_length=60, 
+            min_length=20,        
+            num_beams=4,          
+            length_penalty=2.0,   
+            early_stopping=True,
+            no_repeat_ngram_size=3
+            
         )
 
         summary = tokenizer.decode(summary_ids[0], skip_special_tokens=True)
