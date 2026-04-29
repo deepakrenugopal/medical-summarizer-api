@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Medical Report Summarizer</title>
+
+    <style>
+
+        body {
+            font-family: Arial, sans-serif;
+            background: #f5f5f5;
+            display: flex;
+            justify-content: center;
+            padding-top: 60px;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            width: 900px;
+            border-radius: 10px;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+
+        h2 { margin-top: 0; font-size: 24px; color: #1e293b; }
+
+        .subtitle {
+            color: #64748b;
+            font-size: 14px;
+            margin-top: -10px;
+            margin-bottom: 25px;
+        }
+
+        .columns { display: flex; gap: 20px; }
+        .column { flex: 1; display: flex; flex-direction: column; }
+        .column-label { font-size: 13px; color: #64748b; margin-bottom: 6px; }
+
+        textarea {
+            width: 100%;
+            height: 180px;
+            padding: 12px;
+            font-size: 15px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            resize: none;
+            box-sizing: border-box;
+            font-family: Arial, sans-serif;
+            line-height: 1.6;
+            color: #1e293b;
+        }
+
+        textarea:focus { outline: none; border-color: #94a3b8; }
+
+        .output-box {
+            height: 180px;
+            padding: 12px;
+            font-size: 15px;
+            border-radius: 6px;
+            border: 1px solid #cbd5e1;
+            background: #fff;
+            box-sizing: border-box;
+            line-height: 1.6;
+            color: #1e293b;
+            overflow-y: auto;
+            white-space: pre-wrap;
+        }
+
+        .output-box.placeholder { color: #94a3b8; }
+
+        .button-row { display: flex; gap: 12px; margin-top: 15px; }
+
+        .btn-clear {
+            flex: 1; padding: 12px; font-size: 15px;
+            background: #e2e8f0; color: #1e293b;
+            border: none; border-radius: 6px; cursor: pointer;
+        }
+        .btn-clear:hover { background: #cbd5e1; }
+
+        .btn-submit {
+            flex: 2; padding: 12px; font-size: 15px;
+            background: #f97316; color: white;
+            border: none; border-radius: 6px;
+            cursor: pointer; font-weight: bold;
+        }
+        .btn-submit:hover { background: #ea6c0a; }
+        .btn-submit:disabled { background: #fdba74; cursor: not-allowed; }
+
+        .btn-share {
+            margin-top: 10px; width: 100%; padding: 11px; font-size: 14px;
+            background: #f1f5f9; color: #475569;
+            border: 1px solid #cbd5e1; border-radius: 6px;
+            cursor: pointer; display: flex;
+            align-items: center; justify-content: center; gap: 6px;
+        }
+        .btn-share:hover { background: #e2e8f0; }
+
+        .error-msg { color: #b91c1c; font-size: 14px; margin-top: 10px; }
+
+    </style>
+</head>
+
+<body>
+
+<div class="card">
+
+    <h2>Medical Report Summarizer</h2>
+    <p class="subtitle">Convert findings → impression using your fine-tuned model</p>
+
+    <div class="columns">
+
+        <div class="column">
+            <div class="column-label">findings</div>
+            <textarea id="textInput" placeholder="Paste your findings text here..."></textarea>
+
+            <div class="button-row">
+                <button class="btn-clear" onclick="clearAll()">Clear</button>
+                <button class="btn-submit" id="submitBtn" onclick="summariseText()">Submit</button>
+            </div>
+
+            <div id="errorMsg" class="error-msg"></div>
+        </div>
+
+        <div class="column">
+            <div class="column-label">output</div>
+            <div id="output" class="output-box placeholder">Output will appear here...</div>
+            <button class="btn-share" onclick="copyOutput()">🔗 Share via Link</button>
+        </div>
+
+    </div>
+
+</div>
+
+<script>
+
+const BASE = "https://deepakrenugopal-medical-summarizer.hf.space";
+
+async function summariseText() {
+
+    const text      = document.getElementById("textInput").value;
+    const output    = document.getElementById("output");
+    const errorMsg  = document.getElementById("errorMsg");
+    const submitBtn = document.getElementById("submitBtn");
+
+    errorMsg.textContent = "";
+
+    if (!text.trim()) {
+        errorMsg.textContent = "⚠️ Please enter some findings text first.";
+        return;
+    }
+
+    output.className   = "output-box placeholder";
+    output.textContent = "⏳ Summarising...";
+    submitBtn.disabled = true;
+
+    try {
+        // ── STEP 1: POST with flat JSON body matching the schema exactly ──
+        // Schema says: { "findings": "string" } — no "data" wrapper
+        const step1 = await fetch(BASE + "/gradio_api/call/v2/summarize", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ findings: text })
+        });
+
+        const step1Text = await step1.text();
+        console.log("Step1 status:", step1.status, "body:", step1Text);
+
+        if (!step1.ok) throw new Error("Step 1 failed (" + step1.status + "): " + step1Text);
+
+        const { event_id } = JSON.parse(step1Text);
+        if (!event_id) throw new Error("No event_id in response: " + step1Text);
+
+        console.log("Got event_id:", event_id);
+
+        // ── STEP 2: GET the SSE stream ────────────────────────────────
+        const step2 = await fetch(BASE + "/gradio_api/call/summarize/" + event_id);
+        if (!step2.ok) throw new Error("Step 2 failed (" + step2.status + ")");
+
+        const reader       = step2.body.getReader();
+        const decoder      = new TextDecoder();
+        let   buffer       = "";
+        let   result       = null;
+        let   currentEvent = "";
+
+        while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+
+            buffer += decoder.decode(value, { stream: true });
+            const lines = buffer.split("\n");
+            buffer = lines.pop();
+
+            for (const line of lines) {
+                console.log("SSE:", line);
+                if (line.startsWith("event:")) {
+                    currentEvent = line.replace("event:", "").trim();
+                } else if (line.startsWith("data:") && currentEvent === "complete") {
+                    const dataStr = line.replace("data:", "").trim();
+                    try {
+                        const parsed = JSON.parse(dataStr);
+                        result = Array.isArray(parsed) ? parsed[0] : parsed;
+                    } catch (e) {
+                        result = dataStr;
+                    }
+                }
+            }
+
+            if (result !== null) break;
+        }
+
+        reader.cancel();
+
+        if (!result) throw new Error("No result received from model");
+
+        output.className   = "output-box";
+        output.textContent = result.trim();
+
+    } catch (err) {
+        console.error(err);
+        errorMsg.textContent = "❌ " + err.message;
+        output.className     = "output-box placeholder";
+        output.textContent   = "";
+    }
+
+    submitBtn.disabled = false;
+}
+
+function clearAll() {
+    document.getElementById("textInput").value = "";
+    const output = document.getElementById("output");
+    output.className   = "output-box placeholder";
+    output.textContent = "Output will appear here...";
+    document.getElementById("errorMsg").textContent = "";
+}
+
+function copyOutput() {
+    const text = document.getElementById("output").textContent;
+    if (!text || text === "Output will appear here...") return;
+    navigator.clipboard.writeText(text).then(() => alert("Output copied to clipboard!"));
+}
+
+</script>
+
+</body>
+</html>
