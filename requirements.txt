@@ -1,5 +1,4 @@
-flask
 transformers
 torch
+gradio
 sentencepiece
-rouge-score
